@@ -217,8 +217,8 @@ def cross_validation(trn_file_name, test_file_name, k_fold=10):
     train_x_len = len(train_x)
     subset_size = train_x_len / k_fold
 
-    labd_mse_dict = {}
-    for labd in range(0, 151):
+    lbda_mse_dict = {}
+    for lbda in range(0, 151):
 
         valid_mse = 0
 
@@ -233,33 +233,115 @@ def cross_validation(trn_file_name, test_file_name, k_fold=10):
             train_train_y = np.concatenate((train_y[: idx_begin], train_y[idx_end:]), axis=0)
 
             # train model then get weight
-            weight_mat = ordinary_least_square(train_train_x, train_train_y, labd)
+            weight_mat = ordinary_least_square(train_train_x, train_train_y, lbda)
             # predict y value
-            y_valid_pred = np.dot(validation_x, weight_mat)
-            valid_mse += calculate_mse(y_label=validation_y, y_pred=y_valid_pred)
-        labd_mse_dict[labd] = valid_mse / k_fold
+            valid_y_pred = np.dot(validation_x, weight_mat)
+            valid_mse += calculate_mse(y_label=validation_y, y_pred=valid_y_pred)
+        lbda_mse_dict[lbda] = valid_mse / k_fold
 
-    print(labd_mse_dict)
+    lbda_ = min(lbda_mse_dict, key=lbda_mse_dict.get)
+
+    test_weight_mat = ordinary_least_square(train_x, train_y, lbda_)
+    test_y_pred = np.dot(test_x, test_weight_mat)
+
+    test_mse = calculate_mse(y_label=test_y, y_pred=test_y_pred)
+    test_mse_ = round(test_mse, 4)
+
+    # output
+    logger.info('For dataset {}, after using 10-fold CV, we get min test MSE = {} with λ = {}.'
+                .format(trn_file_name, test_mse_, lbda_))
+
+
+def learning_curve(trn_file_name, test_file_name, lbda, subset_size_step, repeat_times):
+    """
+    Fix lambda = 1, 25, 150. For each of these values, plot a learning curve for the algorithm
+    using the dataset 1000-100.csv.
+    Note: a learning curve plots the performance (i.e., test set MSE) as a function of the
+    size of the training set. To produce the curve, you need to draw random subsets (of
+    increasing sizes) and record performance (MSE) on the corresponding test set when
+    training on these subsets. In order to get smooth curves, you should repeat the process
+    at least 10 times and average the results.
+
+    @param trn_file_name:
+    @type trn_file_name: string
+    @param test_file_name:
+    @type test_file_name: string
+    @param lbda:
+    @type lbda: int
+    @param subset_size_step: step of number of sub-data size we split.
+                                For example, if it's 10, we get subset size: 10, 20, 30...
+    @type subset_size_step: int
+    @param repeat_times:
+    @type repeat_times: int
+    @return:
+    @rtype:
+    """
+    # get train & test data
+    train_x, train_y = construct_x_y_matrix(file_name=trn_file_name)
+    test_x, test_y = construct_x_y_matrix(file_name=test_file_name)
+
+    subset_size_lst = list(range(subset_size_step, len(train_x)+1, subset_size_step))
+    size_train_mse = {}
+    size_test_mse = {}
+    for subset_size in subset_size_lst:
+        train_mse = 0
+        test_mse = 0
+        for i in range(repeat_times):
+            # replace=False: no repetitive index
+            idx2train = np.random.choice(train_x.shape[0], size=subset_size, replace=False)
+            # construct train dataset
+            train_train_x = train_x[idx2train, :]
+            train_train_y = train_y[idx2train]
+            # train model then get weight
+            weight_mat = ordinary_least_square(train_train_x, train_train_y, lbda)
+            # predict train set y value
+            train_train_y_pred = np.dot(train_train_x, weight_mat)
+            train_mse += calculate_mse(y_label=train_train_y, y_pred=train_train_y_pred)
+            # handle with test set
+            test_y_pred = np.dot(test_x, weight_mat)
+            test_mse += calculate_mse(y_label=test_y, y_pred=test_y_pred)
+        # training results
+        train_mse_mean = train_mse / repeat_times
+        size_train_mse[subset_size] = train_mse_mean
+        # test results
+        test_mse_mean = test_mse / repeat_times
+        size_test_mse[subset_size] = test_mse_mean
+
+    y_train_mse = list(size_train_mse.values())
+    y_test_mse = list(size_test_mse.values())
+
+    # plot theta and MSE
+    fig = plt.figure()
+    plt.plot(subset_size_lst, y_train_mse, label='Train MSE')
+    plt.plot(subset_size_lst, y_test_mse, label='Test MSE')
+    plt.legend(loc='best')
+    plt.show()
+    # then save image
+    pic_name = 'tmp_res/{}_learning_curve_with_lambda_{}'.format(trn_file_name, lbda)
+    fig.savefig(pic_name + '.png')
+    logger.info('{} is saved!'.format(pic_name))
 
 
 if __name__ == '__main__':
 
     # create additional dataset
     # create_train_data()
-    # train_dataset = ['train-100-10', 'train-100-100', 'train-1000-100',
-    #                  'train-50(1000)-100', 'train-100(1000)-100', 'train-150(1000)-100']
-    # test_dataset = ['test-100-10', 'test-100-100', 'test-1000-100',
-    #                 'test-1000-100', 'test-1000-100', 'test-1000-100']
+    train_dataset = ['train-100-10', 'train-100-100', 'train-1000-100',
+                     'train-50(1000)-100', 'train-100(1000)-100', 'train-150(1000)-100']
+    test_dataset = ['test-100-10', 'test-100-100', 'test-1000-100',
+                    'test-1000-100', 'test-1000-100', 'test-1000-100']
     # for trn, test in zip(train_dataset, test_dataset):
-    #     # 1. For each of the 6 dataset, plot both the training set MSE
-    #     # and the test set MSE as a function of (x-axis) in one graph.
-    #     plot_mse(trn_file_name=trn, test_file_name=test, min_lbda=0)
-    #     # 1.a For each dataset, which  value gives the least test set MSE?
-    #     get_min_test_mse(trn_file_name=trn, test_file_name=test)
     #
-    # # 1.b For each of dataset 100-100, 50(1000)-100, 100(1000)-100, provide an additional
-    # # graph with ranging from 1 to 150.
+    #     # plot_mse(trn_file_name=trn, test_file_name=test, min_lbda=0)
+    #     # get_min_test_mse(trn_file_name=trn, test_file_name=test)
+    #     cross_validation(trn_file_name=trn, test_file_name=test, k_fold=10)
+    # learning_curve(trn_file_name='train-1000-100', test_file_name='test-1000-100', lbda=1,
+    #                subset_size_step=10, repeat_times=50)
+    # learning_curve(trn_file_name='train-1000-100', test_file_name='test-1000-100', lbda=25,
+    #                subset_size_step=10, repeat_times=50)
+    learning_curve(trn_file_name='train-1000-100', test_file_name='test-1000-100', lbda=150,
+                   subset_size_step=10, repeat_times=50)
     # for trn, test in zip(['train-100-100', 'train-50(1000)-100', 'train-100(1000)-100'],
     #                      ['test-100-100', 'test-1000-100', 'test-1000-100']):
     #     plot_mse(trn_file_name=trn, test_file_name=test, min_lbda=1)
-    cross_validation(trn_file_name='train-100-100', test_file_name='test-100-100', k_fold=10)
+
